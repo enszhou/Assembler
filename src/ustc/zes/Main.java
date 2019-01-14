@@ -229,7 +229,6 @@ public class Main {
                             }
                             lstWriter.write(".FILL #0");
                             true_length++;
-                            System.out.println("@" + init_clause + "@" + true_length);
                             break;
                         }
                         else
