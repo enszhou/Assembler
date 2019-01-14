@@ -6,14 +6,15 @@ import java.util.LinkedList;
 
 public class Main {
     public static void main(String[] args) {
-        int rowIndex = 0, origin = 0, pc = 0, pass = 0;
-        String clause = "";
+        int rowIndex = 0, origin = 0, pc = 0, pass = 0, line = 0;
+        String clause = "", init_clause = "";
         String[] clauseBlock;
         String filePath, absoluteFilenameWithoutEx;
         HashMap<String, Integer> Ins = new HashMap<String, Integer>();
         HashMap<String, Integer> Label = new HashMap<String, Integer>();
         HashMap<String, String> Reg = new HashMap<String, String>();
         HashMap<String, String> SpecialIns = new HashMap<String, String>();
+        HashMap<Character, Integer> Ec = new HashMap<Character, Integer>();
         LinkedList<String> ErrorMessage1 = new LinkedList<String>();
         LinkedList<String> ErrorMessage2 = new LinkedList<String>();
 
@@ -101,6 +102,18 @@ public class Main {
         SpecialIns.put("HALT", "1111000000100101");
         SpecialIns.put("RET", "1100000111000000");
 
+        Ec.put('a', 7);
+        Ec.put('b', 8);
+        Ec.put('f', 12);
+        Ec.put('n', 10);
+        Ec.put('r', 13);
+        Ec.put('t', 9);
+        Ec.put('v', 11);
+        Ec.put('\\', 92);
+        Ec.put('\'', 39);
+        Ec.put('"', 34);
+        Ec.put('0', 0);
+
         try {
             File srcFile = new File(args[0]);
             filePath = srcFile.getCanonicalPath();
@@ -116,16 +129,18 @@ public class Main {
             BufferedWriter lstWriter = new BufferedWriter(lstFileWriter);
             DataOutputStream objWriter = new DataOutputStream(objStream);
 
-            rowIndex = 0;
-            origin = 0;
+
             System.out.println("Starting Pass 1...");
             int j;
             while (true) {
                 clause = br.readLine();
+                init_clause = clause;
+                line++;
                 if (clause == null) {
                     ErrorMessage1.addLast(".END Expected");
                     break;
                 }
+
                 //delete the blank line
                 if (clause.equals(""))
                     continue;
@@ -139,6 +154,9 @@ public class Main {
                 clauseBlock = clause.split("\\s+", 2);
                 if (clauseBlock[0].equals(""))
                     clause = clauseBlock[1];
+                //去空串
+                if (clause.equals(""))
+                    continue;
                 //instruction or label or op
                 clauseBlock = clause.split("\\s*,\\s*|\\s+", 0);
 
@@ -152,13 +170,13 @@ public class Main {
                         continue;
                     }
                     else {
-                        ErrorMessage1.addLast("Expected .ORIG");
+                        ErrorMessage1.addLast("Line " + line + ": Expected .ORIG");
                         break;
                     }
                 }
 
                 //check .END
-                if (clauseBlock[0].equals(".END"))
+                if (clauseBlock[0].toUpperCase().equals(".END"))
                     break;
 
                 //get the label and normalize the instruction
@@ -176,16 +194,41 @@ public class Main {
                         j = 1;
                     }
                     else {
-                        ErrorMessage1.addLast("Unrecognized opcode or Syntax error");
+                        ErrorMessage1.addLast("Line " + line + ": Unrecognized opcode or Syntax error");
                         continue;
                     }
                 }
 
                 for (int i = j; i < clauseBlock.length; i++) {
-                    if (Ins.containsKey(clauseBlock[i].toUpperCase()))
-                        lstWriter.write(clauseBlock[i].toUpperCase() + " ");
+                    if (Ins.containsKey(clauseBlock[i].toUpperCase())) {
+                        if (clauseBlock[i].toUpperCase().equals(".BLKW")) {
+                            for (int k = 0; k < String2Int(clauseBlock[i + 1]) - 1; k++) {
+                                lstWriter.write(".FILL #0");
+                                lstWriter.newLine();
+                            }
+                            lstWriter.write(".FILL #0");
+                            break;
+                        }
+                        else if (clauseBlock[i].toUpperCase().equals(".STRINGZ")) {
+                            clauseBlock = init_clause.split("(?!\\\\)\"", 0);
+                            System.out.println("@" + clauseBlock[1] + "@");
+                            for (int k = 0; k < clauseBlock[1].length(); k++) {
+                                if (clauseBlock[1].charAt(k) == 92 && Ec.containsKey(clauseBlock[1].charAt(k + 1))) {
+                                    lstWriter.write(".FILL #" + Ec.get(clauseBlock[1].charAt(k + 1)));
+                                    k++;
+                                }
+                                else
+                                    lstWriter.write(".FILL #" + (int) (clauseBlock[1].charAt(k)));
+                                lstWriter.newLine();
+                            }
+                            lstWriter.write(".FILL #0");
+                            break;
+                        }
+                        else
+                            lstWriter.write(clauseBlock[i].toUpperCase() + " ");
+                    }
                     else {
-                        if (clauseBlock[i].matches("([xX]-?(\\d|[AaBbCcDdEeFf])+)|([bB]-?[01]+)")) {
+                        if (clauseBlock[i].matches("([xX][+\\-]?(\\d|[AaBbCcDdEeFf])+)|([bB][+\\-]?[01]+)|([+\\-]?\\d+)")) {
                             clauseBlock[i] = "#" + String2Int(clauseBlock[i]);
                         }
                         lstWriter.write(clauseBlock[i] + " ");
@@ -197,7 +240,7 @@ public class Main {
                         rowIndex += String2Int(clauseBlock[j + 1]);
                     }
                     else if (clauseBlock[j].equals(".STRINGZ")) {
-                        rowIndex += clauseBlock[j + 1].length() - 1;
+                        rowIndex += clauseBlock[1].length()+1;
                     }
                     else
                         rowIndex++;
@@ -235,7 +278,7 @@ public class Main {
             objWriter.writeShort(String2Short(ins));
 
             while ((clause = asmReader.readLine()) != null) {  //assemble
-                clauseBlock = clause.split("\\s", 0);
+                clauseBlock = clause.split("\\s+", 0);
                 if (Ins.containsKey(clauseBlock[0])) {
                     opcode = Ins.get(clauseBlock[0]);
                     if (opcode < 16) {
@@ -342,9 +385,16 @@ public class Main {
                                 }
                                 break;
                             case 18:
-                                for (int i = 1; i < clauseBlock[1].length() - 1; i++) {
+                                clause = clause.substring(clause.indexOf('"'), clause.lastIndexOf('"') + 1);
+                                System.out.println("@" + clause + "@");
+                                for (int i = 1; i < clause.length() - 1; i++) {
                                     pc++;
-                                    ins = Int2BinStr(clauseBlock[1].charAt(i), 16, false);
+                                    if (clause.charAt(i) == 92 && Ec.containsKey(clause.charAt(i + 1))) {
+                                        ins = Int2BinStr(Ec.get(clause.charAt(i + 1)), 16, false);
+                                        i++;
+                                    }
+                                    else
+                                        ins = Int2BinStr(clause.charAt(i), 16, false);
                                     binWriter.write(ins);
                                     binWriter.newLine();
                                     objWriter.writeShort(String2Short(ins));
@@ -373,7 +423,7 @@ public class Main {
                 for (String str : ErrorMessage1) {
                     System.out.println(str);
                 }
-                System.out.println("Line " + (rowIndex - origin) + ": the error clause is: \"" + clause + "\"");
+                //System.out.println("Line " + (rowIndex - origin) + ": the error clause is: \"" + clause + "\"");
 
             }
             else {
@@ -408,6 +458,7 @@ public class Main {
     private static int String2Int(String string) {
         char[] str = string.toUpperCase().toCharArray();
         int sum = 0;
+        int j = 1;
         switch (str[0]) {
             case 'X':
                 if (str[1] == '-') {
@@ -421,7 +472,11 @@ public class Main {
                     sum = -sum;
                 }
                 else {
-                    for (int i = 1; i < str.length; i++) {
+                    if (str[1] == '+')
+                        j = 2;
+                    else
+                        j = 1;
+                    for (int i = j; i < str.length; i++) {
                         sum *= 16;
                         if (str[i] > '9')
                             sum += str[i] - 55;
@@ -442,12 +497,18 @@ public class Main {
                     sum = -sum;
                 }
                 else {
-                    for (int i = 1; i < str.length; i++) {
+                    if (str[1] == '+')
+                        j = 2;
+                    else
+                        j = 1;
+                    for (int i = j; i < str.length; i++) {
                         sum *= 2;
                         sum += str[i] - '0';
                     }
                 }
                 break;
+            default:
+                sum = Integer.parseInt(string);
         }
         return sum;
     }
