@@ -6,7 +6,7 @@ import java.util.LinkedList;
 
 public class Main {
     public static void main(String[] args) {
-        int rowIndex = 0, origin = 0, pc = 0, pass = 0, line = 0;
+        int rowIndex = 0, origin = 0, pc = 0, pass = 0, line = 0, true_length = 0;
         String clause = "", init_clause = "";
         String[] clauseBlock;
         String filePath, absoluteFilenameWithoutEx;
@@ -189,7 +189,12 @@ public class Main {
                 else {
                     if (!Label.containsKey(first) && first.matches("[a-zA-Z][a-zA-Z0-9_]{0,19}") && !first.matches("([xX]-?(\\d|[AaBbCcDdEeFf])+)|([bB]-?[01]+)|(#-?[0-9])")) {
                         Label.put(first, rowIndex);
-                        symWriter.write(first + "    " + rowIndex);
+                        symWriter.write(first);
+                        String temp = " ";
+                        for (int k = 0; k < 23 - first.length(); k++) {
+                            temp += " ";
+                        }
+                        symWriter.write(temp + Int2HexStr(rowIndex));
                         symWriter.newLine();
                         j = 1;
                     }
@@ -210,18 +215,21 @@ public class Main {
                             break;
                         }
                         else if (clauseBlock[i].toUpperCase().equals(".STRINGZ")) {
-                            clauseBlock = init_clause.split("(?!\\\\)\"", 0);
-                            System.out.println("@" + clauseBlock[1] + "@");
-                            for (int k = 0; k < clauseBlock[1].length(); k++) {
-                                if (clauseBlock[1].charAt(k) == 92 && Ec.containsKey(clauseBlock[1].charAt(k + 1))) {
-                                    lstWriter.write(".FILL #" + Ec.get(clauseBlock[1].charAt(k + 1)));
+                            init_clause = init_clause.split("(?!\\\\)\"", 0)[1];
+                            true_length = 0;
+                            for (int k = 0; k < init_clause.length(); k++) {
+                                if (init_clause.charAt(k) == 92 && Ec.containsKey(init_clause.charAt(k + 1))) {
+                                    lstWriter.write(".FILL #" + Ec.get(init_clause.charAt(k + 1)));
                                     k++;
                                 }
                                 else
-                                    lstWriter.write(".FILL #" + (int) (clauseBlock[1].charAt(k)));
+                                    lstWriter.write(".FILL #" + (int) (init_clause.charAt(k)));
+                                true_length++;
                                 lstWriter.newLine();
                             }
                             lstWriter.write(".FILL #0");
+                            true_length++;
+                            System.out.println("@" + init_clause + "@" + true_length);
                             break;
                         }
                         else
@@ -240,7 +248,7 @@ public class Main {
                         rowIndex += String2Int(clauseBlock[j + 1]);
                     }
                     else if (clauseBlock[j].equals(".STRINGZ")) {
-                        rowIndex += clauseBlock[1].length()+1;
+                        rowIndex += true_length;
                     }
                     else
                         rowIndex++;
@@ -360,52 +368,18 @@ public class Main {
                             ErrorMessage2.addLast("Unrecognized opcode");
                     }
                     else {
-                        switch (opcode) {
-                            case 16:
-                                pc++;
-                                if (Label.containsKey(clauseBlock[1])) {
-                                    ins = Int2BinStr(Label.get(clauseBlock[1]), 16, false);
-                                }
-                                else {
-                                    ins = Int2BinStr(clauseBlock[1], 16, false);
-                                    if (ins == null)
-                                        ins = Int2BinStr(clauseBlock[1], 16, true);
-                                }
-                                binWriter.write(ins);
-                                binWriter.newLine();
-                                objWriter.writeShort(String2Short(ins));
-                                break;
-                            case 17:
-                                ins = "0000000000000000";
-                                for (int i = 0; i < String2Int(clauseBlock[1]); i++) {
-                                    pc++;
-                                    binWriter.write(ins);
-                                    binWriter.newLine();
-                                    objWriter.writeShort(String2Short(ins));
-                                }
-                                break;
-                            case 18:
-                                clause = clause.substring(clause.indexOf('"'), clause.lastIndexOf('"') + 1);
-                                System.out.println("@" + clause + "@");
-                                for (int i = 1; i < clause.length() - 1; i++) {
-                                    pc++;
-                                    if (clause.charAt(i) == 92 && Ec.containsKey(clause.charAt(i + 1))) {
-                                        ins = Int2BinStr(Ec.get(clause.charAt(i + 1)), 16, false);
-                                        i++;
-                                    }
-                                    else
-                                        ins = Int2BinStr(clause.charAt(i), 16, false);
-                                    binWriter.write(ins);
-                                    binWriter.newLine();
-                                    objWriter.writeShort(String2Short(ins));
-                                }
-                                pc++;
-                                ins = "0000000000000000";
-                                binWriter.write(ins);
-                                binWriter.newLine();
-                                objWriter.writeShort(String2Short(ins));
-                                break;
+                        pc++;
+                        if (Label.containsKey(clauseBlock[1])) {
+                            ins = Int2BinStr(Label.get(clauseBlock[1]), 16, false);
                         }
+                        else {
+                            ins = Int2BinStr(clauseBlock[1], 16, false);
+                            if (ins == null)
+                                ins = Int2BinStr(clauseBlock[1], 16, true);
+                        }
+                        binWriter.write(ins);
+                        binWriter.newLine();
+                        objWriter.writeShort(String2Short(ins));
                     }
                 }
                 else {
@@ -550,5 +524,25 @@ public class Main {
     private static String Int2BinStr(String num_str, int bits, boolean isComponent) {
         int num = String2Int(num_str);
         return Int2BinStr(num, bits, isComponent);
+    }
+
+    private static String Int2HexStr(int num) {
+        char[] bin_str = Int2BinStr(num, 16, false).toCharArray();
+        String str = "";
+        int sum = 0;
+        for (int i = 0; i < 16; i++) {
+            if (i % 4 == 0) {
+                sum = 0;
+            }
+            sum *= 2;
+            sum += bin_str[i] - '0';
+            if (i % 4 == 3) {
+                if (sum < 10)
+                    str = str + (char) (sum + '0');
+                else
+                    str = str + (char) (sum - 10 + 'A');
+            }
+        }
+        return str;
     }
 }
